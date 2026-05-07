@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vital-sync"
-version = "0.1.0"
+version = "0.1.1"
 description = "Personal health data aggregation and analytics toolkit. Integrates Oura Ring, Hevy workouts, Renpho scale, and MyNetDiary."
 readme = "README.md"
 license = {text = "MIT"}
