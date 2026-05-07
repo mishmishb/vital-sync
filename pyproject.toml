@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "vital-sync"
-version = "0.1.1"
+dynamic = ["version"]
 description = "Personal health data aggregation and analytics toolkit. Integrates Oura Ring, Hevy workouts, Renpho scale, and MyNetDiary."
 readme = "README.md"
 license = {text = "MIT"}
@@ -65,3 +65,9 @@ skips = ["B101", "B310"]  # assert intentional; urlopen uses hardcoded HTTPS URL
 typeCheckingMode = "standard"
 include = ["src"]
 exclude = ["tests/**", ".venv/**"]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/vital_sync/_version.py"

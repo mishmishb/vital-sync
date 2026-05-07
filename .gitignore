@@ -60,5 +60,8 @@ hevy_cache/
 backups/
 *.bak
 
+# Build artifacts
+src/vital_sync/_version.py
+
 # Security
 .secrets.baseline
