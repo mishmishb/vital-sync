@@ -1,0 +1,36 @@
+[
+  {
+    "date": "2025-11-15",
+    "sleep_score": 72,
+    "readiness_score": 68,
+    "activity_score": 91,
+    "sleep_duration_hours": 6.9,
+    "sleep_efficiency": 88,
+    "deep_sleep_min": 98,
+    "rem_sleep_min": 112,
+    "avg_hr": 62,
+    "lowest_hr": 55,
+    "hrv_ms": 28,
+    "steps": 9400,
+    "bedtime": "00:45:00",
+    "wake_time": "07:40:00",
+    "sources": ["oura"]
+  },
+  {
+    "date": "2025-11-16",
+    "sleep_score": 88,
+    "readiness_score": 85,
+    "activity_score": 76,
+    "sleep_duration_hours": 8.1,
+    "sleep_efficiency": 94,
+    "deep_sleep_min": 135,
+    "rem_sleep_min": 128,
+    "avg_hr": 54,
+    "lowest_hr": 46,
+    "hrv_ms": 39,
+    "steps": 6700,
+    "bedtime": "22:15:00",
+    "wake_time": "06:20:00",
+    "sources": ["oura"]
+  }
+]

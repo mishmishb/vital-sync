@@ -1,0 +1,13 @@
+{
+  "baseline_tags": ["slept at home", "slept alone", "podcast", "eye mask"],
+  "history": {
+    "2026-04-25": {
+      "applied": ["cool room"],
+      "negated": []
+    },
+    "2026-04-26": {
+      "applied": [],
+      "negated": ["podcast"]
+    }
+  }
+}
