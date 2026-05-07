@@ -21,9 +21,12 @@ repos:
       - id: detect-secrets
         args: ['--baseline', '.secrets.baseline']
 
-  - repo: https://github.com/jakebailey/pyright-pre-commit-mirror
-    rev: v1.1.410
+  - repo: local
     hooks:
       - id: pyright
-        args: [--project, pyproject.toml]
+        name: pyright (type check)
+        entry: uv run pyright
+        language: system
+        args: [--project, pyproject.toml, src]
+        pass_filenames: false
         stages: [pre-commit]
