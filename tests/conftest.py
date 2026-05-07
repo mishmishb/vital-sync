@@ -1,5 +1,5 @@
 """
-Test fixtures for health_data analytics tests.
+Test fixtures for vital-sync analytics tests.
 
 Provides:
 - sample_records: list of DailyRecord objects with known values
