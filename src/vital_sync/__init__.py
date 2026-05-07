@@ -13,4 +13,6 @@ Key modules:
     vital_sync.import_csv      — Renpho/MyNetDiary CSV importer
 """
 
-from vital_sync._version import version as __version__
+from vital_sync._version import version
+
+__version__ = version
