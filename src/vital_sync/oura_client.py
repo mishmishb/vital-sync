@@ -101,6 +101,14 @@ def fetch_daily_activity(days: int = 7) -> dict[str, dict[str, Any]]:
     return result
 
 
+def fetch_workouts(days: int = 7) -> list[dict[str, Any]]:
+    """Fetch Oura workout events for the last N days."""
+    start = (date.today() - timedelta(days=days)).isoformat()
+    end = date.today().isoformat()
+    data = _get("workout", {"start_date": start, "end_date": end})
+    return data.get("data", [])
+
+
 def sleep_periods_to_records(
     periods: list[dict[str, Any]],
     daily_sleep: dict[str, dict[str, Any]],
