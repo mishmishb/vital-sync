@@ -24,6 +24,7 @@ from vital_sync.oura_client import (
     fetch_workouts,
     pull_all,
 )
+from vital_sync.sleep_tags import active_baseline_tags
 
 
 def _select_primary_sleep_period(sleep_periods: list[dict], target_day: str) -> dict | None:
@@ -112,7 +113,7 @@ def _dedupe_tags(tags: list[str]) -> list[str]:
 def _build_effective_tags(
     *, tag_data: dict, record_tags: list[str] | None, target_day: str
 ) -> tuple[list[str], list[str]]:
-    baseline = tag_data.get("baseline_tags", [])
+    baseline = active_baseline_tags(tag_data, target_day)
     history = tag_data.get("history", {}).get(target_day, {})
     negated = history.get("negated", [])
     applied = history.get("applied", [])

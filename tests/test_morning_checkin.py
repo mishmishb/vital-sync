@@ -1,6 +1,8 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from pathlib import Path
 
 from vital_sync import morning_checkin as mc
+from vital_sync import weekly_report as wr
 from vital_sync.hevy_client import HevyWorkout
 
 
@@ -106,6 +108,67 @@ def test_build_effective_tags_merges_history_and_record_tags_without_duplicates(
 
     assert effective_tags == ["sleep mask", "holiday", "on call", "melatonin"]
     assert negated_tags == ["podcast"]
+
+
+def test_build_effective_tags_respects_dated_baseline_start() -> None:
+    tag_data = {
+        "baseline_tags": ["sleep mask"],
+        "baseline_effective_from": {"melatonin": "2026-05-22"},
+        "history": {
+            "2026-05-23": {
+                "applied": [],
+                "negated": ["melatonin"],
+            }
+        },
+    }
+
+    before_start, before_negated = mc._build_effective_tags(
+        tag_data=tag_data,
+        record_tags=None,
+        target_day="2026-05-21",
+    )
+    on_start, on_start_negated = mc._build_effective_tags(
+        tag_data=tag_data,
+        record_tags=None,
+        target_day="2026-05-22",
+    )
+    negated_day, negated_day_negated = mc._build_effective_tags(
+        tag_data=tag_data,
+        record_tags=None,
+        target_day="2026-05-23",
+    )
+
+    assert before_start == ["sleep mask"]
+    assert before_negated == []
+    assert on_start == ["sleep mask", "melatonin"]
+    assert on_start_negated == []
+    assert negated_day == ["sleep mask"]
+    assert negated_day_negated == ["melatonin"]
+
+
+def test_sleep_tag_deviations_use_active_baselines_for_each_date(tmp_path: Path) -> None:
+    tags_path = tmp_path / "sleep_tags.json"
+    tags_path.write_text(
+        """
+{
+  "baseline_tags": ["sleep mask"],
+  "baseline_effective_from": {"melatonin": "2026-05-22"},
+  "history": {
+    "2026-05-22": {"applied": [], "negated": ["melatonin"]},
+    "2026-05-21": {"applied": ["melatonin"], "negated": []}
+  }
+}
+""".strip()
+    )
+    records = [
+        wr.DailyRecord(date=date(2026, 5, 21), sleep_tags=["melatonin"]),
+        wr.DailyRecord(date=date(2026, 5, 22), negated_baseline_tags=["melatonin"]),
+    ]
+
+    summary = wr._sleep_tag_deviations(records, str(tags_path), window_start=date(2026, 5, 20))
+
+    assert summary["applied_extras"] == {"melatonin": ["2026-05-21"]}
+    assert summary["negated_baselines"] == {"melatonin": ["2026-05-22"]}
 
 
 def test_build_activity_data_uses_daily_activity_as_primary_context() -> None:

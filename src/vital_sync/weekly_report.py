@@ -25,6 +25,7 @@ from vital_sync.analytics import (
     detect_deviations_hybrid,
     load_cache,
 )
+from vital_sync.sleep_tags import active_baseline_tags
 
 
 def _safe_float(v: Any) -> float | None:
@@ -96,7 +97,6 @@ def _sleep_tag_deviations(
     with open(tags_path) as f:
         tag_data = json.load(f)
 
-    baselines = set(tag_data.get("baseline_tags", []))
     history = tag_data.get("history", {})
 
     negated: dict[str, list[str]] = defaultdict(list)
@@ -106,25 +106,29 @@ def _sleep_tag_deviations(
         r_date = r.date.isoformat() if hasattr(r, "date") else str(r.date)
         if r_date < window_start.isoformat():
             continue
+        active_baselines = set(active_baseline_tags(tag_data, r_date))
         day_history = history.get(r_date, {})
         for tag in day_history.get("negated", []):
-            negated[tag].append(r_date)
+            if tag in active_baselines:
+                negated[tag].append(r_date)
         for tag in day_history.get("applied", []):
-            applied_extras[tag].append(r_date)
+            if tag not in active_baselines:
+                applied_extras[tag].append(r_date)
 
     for r in records:
         r_date = r.date.isoformat() if hasattr(r, "date") else str(r.date)
         if r_date < window_start.isoformat():
             continue
+        active_baselines = set(active_baseline_tags(tag_data, r_date))
         manual_tags = getattr(r, "sleep_tags", None)
         if manual_tags and isinstance(manual_tags, list):
             for tag in manual_tags:
-                if tag not in baselines:
+                if tag not in active_baselines:
                     if r_date not in applied_extras.get(tag, []):
                         applied_extras[tag].append(r_date)
 
     return {
-        "negated_baselines": {k: v for k, v in negated.items() if k in baselines},
+        "negated_baselines": {k: v for k, v in negated.items()},
         "applied_extras": {k: v for k, v in applied_extras.items()},
     }
 
