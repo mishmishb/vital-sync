@@ -1,0 +1,25 @@
+[
+  {
+    "id": "hevy-golden-1",
+    "title": "Push Day",
+    "routine_id": "routine-1",
+    "description": "fixture",
+    "start_time": "2026-05-20T18:00:00+00:00",
+    "end_time": "2026-05-20T18:45:00+00:00",
+    "updated_at": "2026-05-20T18:46:00Z",
+    "created_at": "2026-05-20T17:55:00Z",
+    "exercises": [
+      {
+        "index": 0,
+        "title": "Bench Press (Barbell)",
+        "exercise_template_id": "bench-template",
+        "notes": "",
+        "superset_id": null,
+        "sets": [
+          {"index": 0, "type": "warmup", "weight_kg": 60, "reps": 8, "rpe": 6},
+          {"index": 1, "type": "normal", "weight_kg": 80, "reps": 5, "rpe": 8.5}
+        ]
+      }
+    ]
+  }
+]

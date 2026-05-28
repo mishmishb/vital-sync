@@ -84,6 +84,23 @@ vital_sync/
 
 Data is stored as a local JSON cache at `~/.vital_sync/cache.json` (configurable via `VITAL_SYNC_CACHE` env var).
 
+Optional personal configuration is read from `~/.vital_sync/config.json` (configurable via
+`VITAL_SYNC_CONFIG`). Example:
+
+```json
+{
+  "sleep_tags": {
+    "early_wake": {
+      "enabled": true,
+      "before": "09:30"
+    }
+  }
+}
+```
+
+Set `enabled` to `false` to disable the automatic `early wake` sleep tag, or change `before` to
+whatever local wake-time cutoff you want.
+
 ## Hermes Agent Integration
 
 vital-sync is the health data backend for [Hermes Agent](https://hermes-agent.nousresearch.com/docs) but works with any LLM pipeline. The `morning_checkin` and `weekly_report` modules output structured JSON — Hermes cron jobs run them and inject the output as LLM context.
@@ -184,6 +201,7 @@ hermes cronjob create \
 | `VITAL_SYNC_CACHE` | `~/.vital_sync/cache.json` | Cache file path |
 | `VITAL_SYNC_DATA_DIR` | `~/.vital_sync/` | Data directory |
 | `VITAL_SYNC_SLEEP_TAGS` | `~/.vital_sync/sleep_tags.json` | Sleep tags file |
+| `VITAL_SYNC_CONFIG` | `~/.vital_sync/config.json` | Personal config file |
 
 ## Cache Schema
 

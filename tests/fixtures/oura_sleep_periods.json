@@ -1,0 +1,36 @@
+[
+  {
+    "day": "2026-05-20",
+    "total_sleep_duration": 25200,
+    "deep_sleep_duration": 5400,
+    "rem_sleep_duration": 7200,
+    "efficiency": 91,
+    "latency": 600,
+    "time_in_bed": 27000,
+    "bedtime_start": "2026-05-19T23:30:00+02:00",
+    "bedtime_end": "2026-05-20T06:45:00+02:00",
+    "average_heart_rate": 54,
+    "lowest_heart_rate": 47,
+    "average_hrv": 48
+  },
+  {
+    "day": "2026-05-20",
+    "total_sleep_duration": 3600,
+    "deep_sleep_duration": 600,
+    "rem_sleep_duration": 900,
+    "efficiency": 80,
+    "latency": 120,
+    "time_in_bed": 3900,
+    "bedtime_start": "2026-05-20T14:00:00+02:00",
+    "bedtime_end": "2026-05-20T15:00:00+02:00",
+    "average_heart_rate": 58,
+    "lowest_heart_rate": 52,
+    "average_hrv": 40
+  },
+  {
+    "day": "2026-05-21",
+    "total_sleep_duration": 900,
+    "bedtime_start": "2026-05-21T03:00:00+02:00",
+    "bedtime_end": "2026-05-21T03:15:00+02:00"
+  }
+]

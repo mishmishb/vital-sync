@@ -70,7 +70,7 @@ def run(
         if d:
             try:
                 existing_dates.add(date.fromisoformat(d))
-            except Exception:
+            except ValueError:
                 pass
 
     missing_dates = []

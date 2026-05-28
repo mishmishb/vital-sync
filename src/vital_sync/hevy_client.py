@@ -626,7 +626,7 @@ def _load_cache() -> tuple[list[HevyWorkout], datetime | None]:
         try:
             meta = json.loads(_META_FILE.read_text())
             last_sync = datetime.fromisoformat(meta["last_sync"])
-        except Exception:
+        except (json.JSONDecodeError, KeyError, ValueError, OSError):
             pass
     return workouts, last_sync
 

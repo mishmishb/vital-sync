@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from vital_sync.analytics import DailyRecord, load_cache, merge_hevy_into_records, save_cache
@@ -110,6 +110,66 @@ def _dedupe_tags(tags: list[str]) -> list[str]:
     return deduped
 
 
+def _parse_clock_time(value: str | None) -> time | None:
+    if not value:
+        return None
+    normalised = value.strip()
+    if not normalised:
+        return None
+    if "T" in normalised:
+        normalised = normalised.split("T", 1)[1]
+    if "+" in normalised:
+        normalised = normalised.split("+", 1)[0]
+    if len(normalised) == 5:
+        normalised = f"{normalised}:00"
+    try:
+        return time.fromisoformat(normalised)
+    except ValueError:
+        return None
+
+
+def _auto_add_early_wake_tag(
+    *,
+    record: DailyRecord | None,
+    tag_data: dict,
+    target_day: str,
+    config: dict | None = None,
+    cutoff: str = "09:30:00",
+) -> bool:
+    if record is None:
+        return False
+
+    early_wake_config = (config or {}).get("sleep_tags", {}).get("early_wake", {})
+    if early_wake_config.get("enabled", True) is False:
+        return False
+    cutoff = early_wake_config.get("before", cutoff)
+
+    wake_time = _parse_clock_time(record.wake_time)
+    cutoff_time = _parse_clock_time(cutoff)
+    if wake_time is None or cutoff_time is None or wake_time >= cutoff_time:
+        return False
+
+    changed = False
+    if "early wake" not in record.sleep_tags:
+        record.sleep_tags.append("early wake")
+        changed = True
+
+    canonical_tags = tag_data.setdefault("canonical_tags", [])
+    if "early wake" not in canonical_tags:
+        canonical_tags.append("early wake")
+        changed = True
+
+    history = tag_data.setdefault("history", {})
+    day_history = history.setdefault(target_day, {})
+    applied = day_history.setdefault("applied", [])
+    day_history.setdefault("negated", [])
+    if "early wake" not in applied:
+        applied.append("early wake")
+        changed = True
+
+    return changed
+
+
 def _build_effective_tags(
     *, tag_data: dict, record_tags: list[str] | None, target_day: str
 ) -> tuple[list[str], list[str]]:
@@ -138,8 +198,8 @@ def _build_oura_workout_summary(workout: dict) -> dict:
         "activity": workout.get("activity"),
         "intensity": workout.get("intensity"),
         "duration_min": duration_min,
-        "calories": round(workout.get("calories", 0)),
-        "distance_m": round(workout.get("distance", 0)),
+        "calories": round(workout.get("calories") or 0),
+        "distance_m": round(workout.get("distance") or 0),
     }
 
 
@@ -263,6 +323,23 @@ def _get_tags_path() -> Path:
     )
 
 
+def _get_config_path() -> Path:
+    return Path(
+        os.environ.get(
+            "VITAL_SYNC_CONFIG",
+            str(Path.home() / ".vital_sync" / "config.json"),
+        )
+    )
+
+
+def _load_config() -> dict:
+    config_path = _get_config_path()
+    if not config_path.exists():
+        return {}
+    with open(config_path) as f:
+        return json.load(f)
+
+
 def main() -> None:
     today = date.today().isoformat()
     yesterday = (date.today() - timedelta(days=1)).isoformat()
@@ -343,8 +420,30 @@ def main() -> None:
     hevy_workouts = sync_workouts()
     new_workouts = [w for w in hevy_workouts if w.created_at.isoformat()[:10] >= yesterday]
     merged = merge_hevy_into_records(hevy_workouts, merged)
+
+    # ---- Sleep tags ----
+    config = _load_config()
+    tags_path = _get_tags_path()
+    tag_data: dict = {"history": {}, "canonical_tags": []}
+    if tags_path.exists():
+        with open(tags_path) as f:
+            tag_data = json.load(f)
+
+    today_record: DailyRecord | None = None
+    for record in merged:
+        if record.date.isoformat() == today:
+            today_record = record
+            break
+
+    if _auto_add_early_wake_tag(
+        record=today_record, tag_data=tag_data, target_day=today, config=config
+    ):
+        tags_path.parent.mkdir(parents=True, exist_ok=True)
+        tags_path.write_text(json.dumps(tag_data, indent=2) + "\n")
+
     save_cache(merged, str(cache_path))
 
+    # ---- Activity summary ----
     activity_data = _build_activity_data(
         yesterday=yesterday,
         daily_activity=daily_activity,
@@ -352,18 +451,10 @@ def main() -> None:
         hevy_workouts=hevy_workouts,
     )
 
-    # ---- Sleep tags ----
-    tags_path = _get_tags_path()
     effective_tags: list[str] = []
     negated_tags: list[str] = []
-    today_record_tags: list[str] = []
-    for record in merged:
-        if record.date.isoformat() == today:
-            today_record_tags = getattr(record, "sleep_tags", []) or []
-            break
+    today_record_tags = getattr(today_record, "sleep_tags", []) if today_record else []
     if tags_path.exists():
-        with open(tags_path) as f:
-            tag_data = json.load(f)
         effective_tags, negated_tags = _build_effective_tags(
             tag_data=tag_data,
             record_tags=today_record_tags,

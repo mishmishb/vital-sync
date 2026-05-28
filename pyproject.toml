@@ -57,6 +57,15 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-v --tb=short"
 
+[tool.coverage.run]
+branch = true
+source = ["vital_sync"]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = false
+
 [tool.bandit]
 exclude_dirs = ["tests"]
 skips = ["B101", "B310"]  # assert intentional; urlopen uses hardcoded HTTPS URLs
@@ -71,3 +80,10 @@ source = "vcs"
 
 [tool.hatch.build.hooks.vcs]
 version-file = "src/vital_sync/_version.py"
+
+[dependency-groups]
+dev = [
+    "radon>=6.0.1",
+    "vulture>=2.16",
+    "xenon>=0.9.3",
+]

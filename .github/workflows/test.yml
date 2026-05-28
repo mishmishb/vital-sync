@@ -57,4 +57,4 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run tests
-        run: pytest --cov=vital_sync --cov-report=term-missing
+        run: pytest --cov=vital_sync --cov-report=term-missing --cov-report=xml
