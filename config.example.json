@@ -1,0 +1,8 @@
+{
+  "sleep_tags": {
+    "early_wake": {
+      "enabled": true,
+      "before": "09:30"
+    }
+  }
+}

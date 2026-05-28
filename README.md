@@ -85,7 +85,7 @@ vital_sync/
 Data is stored as a local JSON cache at `~/.vital_sync/cache.json` (configurable via `VITAL_SYNC_CACHE` env var).
 
 Optional personal configuration is read from `~/.vital_sync/config.json` (configurable via
-`VITAL_SYNC_CONFIG`). Example:
+`VITAL_SYNC_CONFIG`). Copy `config.example.json` to that path and adjust it:
 
 ```json
 {
@@ -98,8 +98,8 @@ Optional personal configuration is read from `~/.vital_sync/config.json` (config
 }
 ```
 
-Set `enabled` to `false` to disable the automatic `early wake` sleep tag, or change `before` to
-whatever local wake-time cutoff you want.
+Without this config, the automatic `early wake` sleep tag is disabled. Set `enabled` to `false`
+to turn it off again, or change `before` to whatever local wake-time cutoff you want.
 
 ## Hermes Agent Integration
 

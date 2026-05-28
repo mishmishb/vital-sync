@@ -201,6 +201,24 @@ def test_build_effective_tags_respects_dated_baseline_start() -> None:
 def test_auto_add_early_wake_tag_marks_record_and_history_before_cutoff() -> None:
     record = mc.DailyRecord(date=date(2026, 5, 22), wake_time="07:54:56")
     tag_data = {"canonical_tags": [], "history": {}}
+    config = {"sleep_tags": {"early_wake": {"enabled": True, "before": "09:30"}}}
+
+    changed = mc._auto_add_early_wake_tag(
+        record=record,
+        tag_data=tag_data,
+        target_day="2026-05-22",
+        config=config,
+    )
+
+    assert changed is True
+    assert record.sleep_tags == ["early wake"]
+    assert tag_data["canonical_tags"] == ["early wake"]
+    assert tag_data["history"]["2026-05-22"] == {"applied": ["early wake"], "negated": []}
+
+
+def test_auto_add_early_wake_tag_is_opt_in() -> None:
+    record = mc.DailyRecord(date=date(2026, 5, 22), wake_time="07:45:00")
+    tag_data = {"canonical_tags": [], "history": {}}
 
     changed = mc._auto_add_early_wake_tag(
         record=record,
@@ -208,10 +226,9 @@ def test_auto_add_early_wake_tag_marks_record_and_history_before_cutoff() -> Non
         target_day="2026-05-22",
     )
 
-    assert changed is True
-    assert record.sleep_tags == ["early wake"]
-    assert tag_data["canonical_tags"] == ["early wake"]
-    assert tag_data["history"]["2026-05-22"] == {"applied": ["early wake"], "negated": []}
+    assert changed is False
+    assert record.sleep_tags == []
+    assert tag_data == {"canonical_tags": [], "history": {}}
 
 
 def test_auto_add_early_wake_tag_uses_configured_cutoff() -> None:
@@ -274,11 +291,13 @@ def test_auto_add_early_wake_tag_does_not_mark_cutoff_or_duplicate_existing_tag(
         "canonical_tags": ["early wake"],
         "history": {"2026-05-22": {"applied": ["early wake"], "negated": []}},
     }
+    config = {"sleep_tags": {"early_wake": {"enabled": True, "before": "09:30"}}}
 
     changed = mc._auto_add_early_wake_tag(
         record=record,
         tag_data=tag_data,
         target_day="2026-05-22",
+        config=config,
     )
 
     assert changed is False
@@ -540,6 +559,10 @@ def test_main_builds_context_without_live_apis_and_persists_early_wake_tag(
 
     cache_path = tmp_path / "cache.json"
     tags_path = tmp_path / "sleep_tags.json"
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"sleep_tags": {"early_wake": {"enabled": True, "before": "09:30"}}})
+    )
     old_record = mc.DailyRecord(
         date=date(2026, 5, 22),
         mood=7,
@@ -558,6 +581,7 @@ def test_main_builds_context_without_live_apis_and_persists_early_wake_tag(
     monkeypatch.setattr(mc, "date", FrozenDate)
     monkeypatch.setenv("VITAL_SYNC_CACHE", str(cache_path))
     monkeypatch.setenv("VITAL_SYNC_SLEEP_TAGS", str(tags_path))
+    monkeypatch.setenv("VITAL_SYNC_CONFIG", str(config_path))
     monkeypatch.setattr(
         mc,
         "fetch_sleep",

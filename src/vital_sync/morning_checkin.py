@@ -140,7 +140,7 @@ def _auto_add_early_wake_tag(
         return False
 
     early_wake_config = (config or {}).get("sleep_tags", {}).get("early_wake", {})
-    if early_wake_config.get("enabled", True) is False:
+    if early_wake_config.get("enabled") is not True:
         return False
     cutoff = early_wake_config.get("before", cutoff)
 
