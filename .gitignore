@@ -55,10 +55,12 @@ Thumbs.db
 
 # Project-specific (personal data)
 cache.json
+config.json
 *.cache.json
 hevy_cache/
 backups/
 *.bak
+!config.example.json
 
 # Build artifacts
 src/vital_sync/_version.py
