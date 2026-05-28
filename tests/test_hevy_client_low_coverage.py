@@ -72,7 +72,7 @@ def test_hevy_request_builds_url_headers_and_wraps_http_errors(monkeypatch) -> N
         def __enter__(self):
             return self
 
-        def __exit__(self, exc_type, exc, tb):
+        def __exit__(self, _exc_type, _exc, _tb):
             return False
 
         def read(self):
