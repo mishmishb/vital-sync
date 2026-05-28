@@ -2,7 +2,7 @@
   "sleep_tags": {
     "early_wake": {
       "enabled": true,
-      "before": "09:30"
+      "before": "07:00"
     }
   }
 }

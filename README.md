@@ -92,7 +92,7 @@ Optional personal configuration is read from `~/.vital_sync/config.json` (config
   "sleep_tags": {
     "early_wake": {
       "enabled": true,
-      "before": "09:30"
+      "before": "07:00"
     }
   }
 }
