@@ -141,66 +141,75 @@ def test_auto_add_early_wake_tag_ignores_missing_record() -> None:
     assert mc._auto_add_early_wake_tag(record=None, tag_data={}, target_day="2026-05-22") is False
 
 
-def test_build_effective_tags_merges_history_and_record_tags_without_duplicates() -> None:
+def test_build_sleep_tags_for_day_uses_flat_date_entry_as_source_of_truth() -> None:
     tag_data = {
         "baseline_tags": ["sleep mask", "podcast"],
-        "history": {
-            "2026-05-16": {
-                "applied": ["holiday"],
-                "negated": ["podcast"],
-            }
-        },
+        "tags_by_date": {"2026-05-16": ["sleep mask", "holiday"]},
     }
 
-    effective_tags, negated_tags = mc._build_effective_tags(
+    effective_tags, changed = mc._build_sleep_tags_for_day(
         tag_data=tag_data,
         record_tags=["on call", "melatonin", "holiday"],
         target_day="2026-05-16",
     )
 
-    assert effective_tags == ["sleep mask", "holiday", "on call", "melatonin"]
-    assert negated_tags == ["podcast"]
+    assert effective_tags == ["sleep mask", "holiday"]
+    assert changed is False
 
 
-def test_build_effective_tags_respects_dated_baseline_start() -> None:
+def test_build_sleep_tags_for_day_seeds_missing_day_from_baseline_and_record_tags() -> None:
+    tag_data = {
+        "baseline_tags": ["sleep mask", "podcast"],
+        "tags_by_date": {},
+    }
+
+    effective_tags, changed = mc._build_sleep_tags_for_day(
+        tag_data=tag_data,
+        record_tags=["melatonin", "podcast"],
+        target_day="2026-05-16",
+    )
+
+    assert effective_tags == ["sleep mask", "podcast", "melatonin"]
+    assert changed is True
+    assert tag_data["tags_by_date"]["2026-05-16"] == [
+        "sleep mask",
+        "podcast",
+        "melatonin",
+    ]
+
+
+def test_migrate_legacy_sleep_tags_materialises_flat_entries_for_record_dates() -> None:
     tag_data = {
         "baseline_tags": ["sleep mask"],
         "baseline_effective_from": {"melatonin": "2026-05-22"},
+        "canonical_tags": ["holiday", "melatonin"],
         "history": {
             "2026-05-23": {
-                "applied": [],
+                "applied": ["holiday"],
                 "negated": ["melatonin"],
             }
         },
     }
 
-    before_start, before_negated = mc._build_effective_tags(
-        tag_data=tag_data,
-        record_tags=None,
-        target_day="2026-05-21",
-    )
-    on_start, on_start_negated = mc._build_effective_tags(
-        tag_data=tag_data,
-        record_tags=None,
-        target_day="2026-05-22",
-    )
-    negated_day, negated_day_negated = mc._build_effective_tags(
-        tag_data=tag_data,
-        record_tags=None,
-        target_day="2026-05-23",
+    changed = mc.migrate_legacy_sleep_tags(
+        tag_data,
+        record_dates=["2026-05-21", "2026-05-22", "2026-05-23"],
     )
 
-    assert before_start == ["sleep mask"]
-    assert before_negated == []
-    assert on_start == ["sleep mask", "melatonin"]
-    assert on_start_negated == []
-    assert negated_day == ["sleep mask"]
-    assert negated_day_negated == ["melatonin"]
+    assert changed is True
+    assert tag_data["canonical_tags"] == {"holiday": "", "melatonin": ""}
+    assert tag_data["tags_by_date"] == {
+        "2026-05-21": ["sleep mask"],
+        "2026-05-22": ["sleep mask", "melatonin"],
+        "2026-05-23": ["sleep mask", "holiday"],
+    }
+    assert "history" not in tag_data
+    assert "baseline_effective_from" not in tag_data
 
 
-def test_auto_add_early_wake_tag_marks_record_and_history_before_cutoff() -> None:
+def test_auto_add_early_wake_tag_marks_record_and_flat_date_entry_before_cutoff() -> None:
     record = mc.DailyRecord(date=date(2026, 5, 22), wake_time="07:54:56")
-    tag_data = {"canonical_tags": [], "history": {}}
+    tag_data = {"baseline_tags": ["sleep mask"], "canonical_tags": {}, "tags_by_date": {}}
     config = {"sleep_tags": {"early_wake": {"enabled": True, "before": "09:30"}}}
 
     changed = mc._auto_add_early_wake_tag(
@@ -212,13 +221,15 @@ def test_auto_add_early_wake_tag_marks_record_and_history_before_cutoff() -> Non
 
     assert changed is True
     assert record.sleep_tags == ["early wake"]
-    assert tag_data["canonical_tags"] == ["early wake"]
-    assert tag_data["history"]["2026-05-22"] == {"applied": ["early wake"], "negated": []}
+    assert tag_data["canonical_tags"] == {
+        "early wake": "auto-added when wake time is before configured cutoff"
+    }
+    assert tag_data["tags_by_date"]["2026-05-22"] == ["sleep mask", "early wake"]
 
 
 def test_auto_add_early_wake_tag_is_opt_in() -> None:
     record = mc.DailyRecord(date=date(2026, 5, 22), wake_time="07:45:00")
-    tag_data = {"canonical_tags": [], "history": {}}
+    tag_data = {"canonical_tags": {}, "tags_by_date": {}}
 
     changed = mc._auto_add_early_wake_tag(
         record=record,
@@ -228,12 +239,12 @@ def test_auto_add_early_wake_tag_is_opt_in() -> None:
 
     assert changed is False
     assert record.sleep_tags == []
-    assert tag_data == {"canonical_tags": [], "history": {}}
+    assert tag_data == {"canonical_tags": {}, "tags_by_date": {}}
 
 
 def test_auto_add_early_wake_tag_uses_configured_cutoff() -> None:
     record = mc.DailyRecord(date=date(2026, 5, 22), wake_time="08:15:00")
-    tag_data = {"canonical_tags": [], "history": {}}
+    tag_data = {"canonical_tags": {}, "tags_by_date": {}}
     config = {"sleep_tags": {"early_wake": {"enabled": True, "before": "08:00"}}}
 
     changed = mc._auto_add_early_wake_tag(
@@ -245,12 +256,12 @@ def test_auto_add_early_wake_tag_uses_configured_cutoff() -> None:
 
     assert changed is False
     assert record.sleep_tags == []
-    assert tag_data == {"canonical_tags": [], "history": {}}
+    assert tag_data == {"canonical_tags": {}, "tags_by_date": {}}
 
 
 def test_auto_add_early_wake_tag_can_be_disabled_by_config() -> None:
     record = mc.DailyRecord(date=date(2026, 5, 22), wake_time="07:45:00")
-    tag_data = {"canonical_tags": [], "history": {}}
+    tag_data = {"canonical_tags": {}, "tags_by_date": {}}
     config = {"sleep_tags": {"early_wake": {"enabled": False, "before": "09:30"}}}
 
     changed = mc._auto_add_early_wake_tag(
@@ -262,7 +273,7 @@ def test_auto_add_early_wake_tag_can_be_disabled_by_config() -> None:
 
     assert changed is False
     assert record.sleep_tags == []
-    assert tag_data == {"canonical_tags": [], "history": {}}
+    assert tag_data == {"canonical_tags": {}, "tags_by_date": {}}
 
 
 def test_load_config_reads_env_config_path_and_tolerates_missing(
@@ -283,13 +294,27 @@ def test_load_config_reads_env_config_path_and_tolerates_missing(
     assert mc._load_config() == {}
 
 
+def test_default_data_paths_live_in_current_working_directory(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.delenv("VITAL_SYNC_DATA_DIR", raising=False)
+    monkeypatch.delenv("VITAL_SYNC_CACHE", raising=False)
+    monkeypatch.delenv("VITAL_SYNC_SLEEP_TAGS", raising=False)
+    monkeypatch.delenv("VITAL_SYNC_CONFIG", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    expected_data_dir = tmp_path / ".vital-sync-data"
+
+    assert mc._get_cache_path() == expected_data_dir / "cache.json"
+    assert mc._get_tags_path() == expected_data_dir / "sleep_tags.json"
+    assert mc._get_config_path() == expected_data_dir / "config.json"
+
+
 def test_auto_add_early_wake_tag_does_not_mark_cutoff_or_duplicate_existing_tag() -> None:
     record = mc.DailyRecord(
         date=date(2026, 5, 22), wake_time="09:30:00", sleep_tags=["early wake"]
     )
     tag_data = {
-        "canonical_tags": ["early wake"],
-        "history": {"2026-05-22": {"applied": ["early wake"], "negated": []}},
+        "canonical_tags": {"early wake": "auto-added when wake time is before configured cutoff"},
+        "tags_by_date": {"2026-05-22": ["sleep mask", "early wake"]},
     }
     config = {"sleep_tags": {"early_wake": {"enabled": True, "before": "09:30"}}}
 
@@ -302,33 +327,34 @@ def test_auto_add_early_wake_tag_does_not_mark_cutoff_or_duplicate_existing_tag(
 
     assert changed is False
     assert record.sleep_tags == ["early wake"]
-    assert tag_data["canonical_tags"] == ["early wake"]
-    assert tag_data["history"]["2026-05-22"] == {"applied": ["early wake"], "negated": []}
+    assert tag_data["canonical_tags"] == {
+        "early wake": "auto-added when wake time is before configured cutoff"
+    }
+    assert tag_data["tags_by_date"]["2026-05-22"] == ["sleep mask", "early wake"]
 
 
-def test_sleep_tag_deviations_use_active_baselines_for_each_date(tmp_path: Path) -> None:
+def test_sleep_tag_deviations_use_flat_tags_for_each_date(tmp_path: Path) -> None:
     tags_path = tmp_path / "sleep_tags.json"
     tags_path.write_text(
         """
 {
-  "baseline_tags": ["sleep mask"],
-  "baseline_effective_from": {"melatonin": "2026-05-22"},
-  "history": {
-    "2026-05-22": {"applied": [], "negated": ["melatonin"]},
-    "2026-05-21": {"applied": ["melatonin"], "negated": []}
+  "baseline_tags": ["sleep mask", "melatonin"],
+  "tags_by_date": {
+    "2026-05-21": ["sleep mask", "melatonin", "late caffeine"],
+    "2026-05-22": ["sleep mask"]
   }
 }
 """.strip()
     )
     records = [
-        wr.DailyRecord(date=date(2026, 5, 21), sleep_tags=["melatonin"]),
-        wr.DailyRecord(date=date(2026, 5, 22), negated_baseline_tags=["melatonin"]),
+        wr.DailyRecord(date=date(2026, 5, 21)),
+        wr.DailyRecord(date=date(2026, 5, 22)),
     ]
 
     summary = wr._sleep_tag_deviations(records, str(tags_path), window_start=date(2026, 5, 20))
 
-    assert summary["applied_extras"] == {"melatonin": ["2026-05-21"]}
-    assert summary["negated_baselines"] == {"melatonin": ["2026-05-22"]}
+    assert summary["extra_tags"] == {"late caffeine": ["2026-05-21"]}
+    assert summary["removed_baselines"] == {"melatonin": ["2026-05-22"]}
 
 
 def test_build_activity_data_uses_daily_activity_as_primary_context() -> None:
@@ -670,10 +696,12 @@ def test_main_builds_context_without_live_apis_and_persists_early_wake_tag(
     assert output["activity"]["oura_workouts"][0]["distance_m"] == 1500
     assert output["yesterday_steps"] == 9123
     assert output["hevy_new_workouts"] == 1
-    assert output["effective_tags"] == ["early wake", "melatonin"]
+    assert output["effective_tags"] == ["melatonin", "early wake"]
     assert any(item["date"] == "2026-05-21" for item in output["hevy_recent_14d"])
     assert today_record.mood == 7
     assert today_record.notes == "preserve manual context"
     assert today_record.sleep_tags == ["melatonin", "early wake"]
-    assert tags["canonical_tags"] == ["early wake"]
-    assert tags["history"]["2026-05-22"] == {"applied": ["early wake"], "negated": []}
+    assert tags["canonical_tags"] == {
+        "early wake": "auto-added when wake time is before configured cutoff"
+    }
+    assert tags["tags_by_date"]["2026-05-22"] == ["melatonin", "early wake"]

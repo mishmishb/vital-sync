@@ -10,28 +10,32 @@ Usage:
 """
 
 import json
-import os
 import shutil
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-CACHE = Path(
-    os.environ.get(
-        "VITAL_SYNC_CACHE",
-        str(Path.home() / ".vital_sync" / "cache.json"),
-    )
-)
-BACKUP_DIR = CACHE.parent / "backups"
-GAPS_FILE = CACHE.parent / "missing_data_gaps.json"
+from vital_sync import paths
+
+
+def _cache_path() -> Path:
+    return paths.cache_path()
+
+
+def _backup_dir() -> Path:
+    return _cache_path().parent / "backups"
+
+
+def _gaps_file() -> Path:
+    return _cache_path().parent / "missing_data_gaps.json"
 
 
 def run(
     cache_path: Path | None = None, backup_dir: Path | None = None, gaps_file: Path | None = None
 ) -> None:
     """Run backup and gap check with configurable paths (for testing)."""
-    c = cache_path or CACHE
-    bd = backup_dir or BACKUP_DIR
-    gf = gaps_file or GAPS_FILE
+    c = cache_path or _cache_path()
+    bd = backup_dir or _backup_dir()
+    gf = gaps_file or _gaps_file()
 
     bd.mkdir(parents=True, exist_ok=True)
 

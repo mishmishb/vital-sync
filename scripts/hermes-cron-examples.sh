@@ -6,7 +6,8 @@
 
 set -euo pipefail
 
-DATA_DIR="${VITAL_SYNC_DATA_DIR:-$HOME/.vital_sync}"
+DATA_DIR="${VITAL_SYNC_DATA_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.vital-sync-data}"
+mkdir -p "$DATA_DIR"
 
 # ─────────────────────────────────────────────────────────────
 # 1. Daily data pull + Hevy sync
@@ -21,16 +22,17 @@ from vital_sync.oura_client import pull_all
 from vital_sync.hevy_client import sync_workouts
 from vital_sync.analytics import load_cache, save_cache, merge_hevy_into_records
 from vital_sync.pre_pull_check import run
-import os
+from vital_sync.paths import cache_path, ensure_data_files
 
-cache_path = os.environ.get("VITAL_SYNC_CACHE", os.path.expanduser("~/.vital_sync/cache.json"))
+ensure_data_files()
+cache_file = cache_path()
 
 # Backup + gap check
 run()
 
 # Oura pull
 new_data = pull_all(days=2)
-records = load_cache(cache_path)
+records = load_cache(cache_file)
 
 # Merge Oura into cache
 from vital_sync.analytics import DailyRecord
@@ -63,7 +65,7 @@ workouts = sync_workouts()
 records = merge_hevy_into_records(workouts, records)
 records.sort(key=lambda r: r.date)
 
-save_cache(records, cache_path)
+save_cache(records, cache_file)
 print(f"Cache updated: {len(records)} records")
 PYEOF
 chmod +x "$PULL_SCRIPT"
@@ -88,7 +90,7 @@ chmod +x "$PULL_SCRIPT"
 echo "vital-sync Hermes integration scripts written to: $DATA_DIR"
 echo ""
 echo "Next steps:"
-echo "  1. Set VITAL_SYNC_CACHE env var if not using default (~/.vital_sync/cache.json)"
+echo "  1. Set VITAL_SYNC_DATA_DIR if not using the local default (.vital-sync-data/)"
 echo "  2. Ensure OURA_API_KEY and HEVY_API_KEY are in ~/.hermes/.env"
 echo "  3. Run '$PULL_SCRIPT' once to initialise the cache"
 echo "  4. Create Hermes cron jobs using the examples above"

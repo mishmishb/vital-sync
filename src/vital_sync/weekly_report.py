@@ -12,12 +12,12 @@ from __future__ import annotations
 
 import json
 import math
-import os
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from vital_sync import paths
 from vital_sync.analytics import (
     DailyRecord,
     compute_all_baselines,
@@ -25,7 +25,7 @@ from vital_sync.analytics import (
     detect_deviations_hybrid,
     load_cache,
 )
-from vital_sync.sleep_tags import active_baseline_tags
+from vital_sync.sleep_tags import active_baseline_tags, migrate_legacy_sleep_tags
 
 
 def _safe_float(v: Any) -> float | None:
@@ -85,51 +85,73 @@ def _time_to_minutes(ts: str | None) -> float | None:
         return None
 
 
+def _tag_sets_for_day(
+    tag_data: dict[str, Any], tags_by_date: dict[str, list[str]], r_date: str
+) -> tuple[set[str], set[str]]:
+    active_baselines = set(active_baseline_tags(tag_data, r_date))
+    if r_date in tags_by_date:
+        return active_baselines, set(tags_by_date.get(r_date, []) or [])
+    return active_baselines, set(active_baselines)
+
+
+def _add_manual_extra_tags(
+    extra_tags: dict[str, list[str]],
+    manual_tags: list[str] | None,
+    active_baselines: set[str],
+    r_date: str,
+) -> None:
+    if not manual_tags:
+        return
+    for tag in manual_tags:
+        if tag not in active_baselines and r_date not in extra_tags.get(tag, []):
+            extra_tags[tag].append(r_date)
+
+
+def _record_sleep_tag_deviations(
+    tag_data: dict[str, Any], tags_by_date: dict[str, list[str]], record: DailyRecord
+) -> tuple[str, set[str], set[str]]:
+    r_date = record.date.isoformat() if hasattr(record, "date") else str(record.date)
+    active_baselines, day_tags = _tag_sets_for_day(tag_data, tags_by_date, r_date)
+    return r_date, active_baselines - day_tags, day_tags - active_baselines
+
+
+def _append_tag_dates(tag_dates: dict[str, list[str]], tags: set[str], r_date: str) -> None:
+    for tag in tags:
+        tag_dates[tag].append(r_date)
+
+
 def _sleep_tag_deviations(
     records: list[DailyRecord],
     tags_path: str,
     window_start: date,
 ) -> dict[str, Any]:
     """Summarise sleep tag deviations for the window."""
-    if not os.path.exists(tags_path):
-        return {"negated_baselines": {}, "applied_extras": {}, "learned": []}
+    if not Path(tags_path).exists():
+        return {"removed_baselines": {}, "extra_tags": {}}
 
     with open(tags_path) as f:
         tag_data = json.load(f)
 
-    history = tag_data.get("history", {})
+    migrate_legacy_sleep_tags(tag_data, [r.date for r in records])
+    tags_by_date = tag_data.get("tags_by_date", {}) or {}
 
-    negated: dict[str, list[str]] = defaultdict(list)
-    applied_extras: dict[str, list[str]] = defaultdict(list)
+    removed_baselines: dict[str, list[str]] = defaultdict(list)
+    extra_tags: dict[str, list[str]] = defaultdict(list)
 
     for r in records:
-        r_date = r.date.isoformat() if hasattr(r, "date") else str(r.date)
+        r_date, removed, extra = _record_sleep_tag_deviations(tag_data, tags_by_date, r)
         if r_date < window_start.isoformat():
             continue
         active_baselines = set(active_baseline_tags(tag_data, r_date))
-        day_history = history.get(r_date, {})
-        for tag in day_history.get("negated", []):
-            if tag in active_baselines:
-                negated[tag].append(r_date)
-        for tag in day_history.get("applied", []):
-            if tag not in active_baselines:
-                applied_extras[tag].append(r_date)
-
-    for r in records:
-        r_date = r.date.isoformat() if hasattr(r, "date") else str(r.date)
-        if r_date < window_start.isoformat():
-            continue
-        active_baselines = set(active_baseline_tags(tag_data, r_date))
-        manual_tags = getattr(r, "sleep_tags", None)
-        if manual_tags and isinstance(manual_tags, list):
-            for tag in manual_tags:
-                if tag not in active_baselines:
-                    if r_date not in applied_extras.get(tag, []):
-                        applied_extras[tag].append(r_date)
+        _append_tag_dates(removed_baselines, removed, r_date)
+        _append_tag_dates(extra_tags, extra, r_date)
+        _add_manual_extra_tags(
+            extra_tags, getattr(r, "sleep_tags", None), active_baselines, r_date
+        )
 
     return {
-        "negated_baselines": {k: v for k, v in negated.items()},
-        "applied_extras": {k: v for k, v in applied_extras.items()},
+        "removed_baselines": {k: v for k, v in removed_baselines.items()},
+        "extra_tags": {k: v for k, v in extra_tags.items()},
     }
 
 
@@ -283,11 +305,13 @@ def _circadian_stats(records: list[DailyRecord]) -> dict[str, Any]:
 
 def _get_data_paths():
     """Resolve data paths from env vars or defaults."""
-    data_dir = Path(os.environ.get("VITAL_SYNC_DATA_DIR", str(Path.home() / ".vital_sync")))
-    cache_path = data_dir / "cache.json"
-    hevy_cache_dir = data_dir / "hevy_cache"
-    tags_path = data_dir / "sleep_tags.json"
-    return data_dir, cache_path, hevy_cache_dir, tags_path
+    data_files = paths.ensure_data_files()
+    return (
+        data_files.data_dir,
+        data_files.cache_path,
+        data_files.hevy_cache_dir,
+        data_files.sleep_tags_path,
+    )
 
 
 def main() -> None:
@@ -437,12 +461,10 @@ def main() -> None:
             for c in sorted(correlations, key=lambda x: abs(x.r or 0), reverse=True)[:8]
         ],
         "sleep_tags": {
-            "negated_baselines": {
-                tag: len(dates) for tag, dates in tag_info["negated_baselines"].items()
+            "removed_baselines": {
+                tag: len(dates) for tag, dates in tag_info["removed_baselines"].items()
             },
-            "applied_extras": {
-                tag: len(dates) for tag, dates in tag_info["applied_extras"].items()
-            },
+            "extra_tags": {tag: len(dates) for tag, dates in tag_info["extra_tags"].items()},
         },
         "hevy": hevy,
         "body_composition": body,

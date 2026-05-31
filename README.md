@@ -77,15 +77,21 @@ vital_sync/
 ├── analytics.py        # Statistics engine
 ├── morning_checkin.py  # Daily context builder
 ├── weekly_report.py    # Weekly trend report
+├── paths.py            # Data-dir resolution and first-run bootstrap
 ├── pre_pull_check.py   # Backup + gap detection
 ├── import_csv.py       # Renpho/MyNetDiary CSV import
 └── sleep_tags.py       # Nightly factor tracking
 ```
 
-Data is stored as a local JSON cache at `~/.vital_sync/cache.json` (configurable via `VITAL_SYNC_CACHE` env var).
+By default, vital-sync stores local state in `.vital-sync-data/` under the current working directory. The directory and these safe defaults are created automatically when the CLI runs:
 
-Optional personal configuration is read from `~/.vital_sync/config.json` (configurable via
-`VITAL_SYNC_CONFIG`). Copy `config.example.json` to that path and adjust it:
+- `cache.json` as `[]`
+- `sleep_tags.json` as `{ "baseline_tags": [], "canonical_tags": {}, "tags_by_date": {} }`
+- `hevy_cache/`
+
+Set `VITAL_SYNC_DATA_DIR` to keep state somewhere else. Set `VITAL_SYNC_CACHE`, `VITAL_SYNC_SLEEP_TAGS`, `VITAL_SYNC_CONFIG`, or `VITAL_SYNC_HEVY_CACHE_DIR` only when you need per-file overrides.
+
+Optional personal configuration is read from `.vital-sync-data/config.json` by default. It is not auto-created. Copy `config.example.json` there and adjust it if you want opt-in behaviour such as automatic `early wake` sleep tagging:
 
 ```json
 {
@@ -143,17 +149,20 @@ Runs the backup + gap check, pulls fresh Oura data, syncs Hevy workouts, and mer
 
 ```bash
 # Create a wrapper script that runs daily pull + merge
-cat > ~/.vital_sync/pull.sh << 'EOF'
+mkdir -p .vital-sync-data
+cat > .vital-sync-data/pull.sh << 'EOF'
 #!/bin/bash
 source ~/.hermes/.env
 set -e
+export VITAL_SYNC_DATA_DIR="${VITAL_SYNC_DATA_DIR:-$PWD/.vital-sync-data}"
 python -m vital_sync.pre_pull_check
 python -c "
 from vital_sync.oura_client import pull_all
 from vital_sync.hevy_client import sync_workouts
 from vital_sync.analytics import load_cache, save_cache, merge_hevy_into_records
-import os
-cache = os.environ.get('VITAL_SYNC_CACHE', os.path.expanduser('~/.vital_sync/cache.json'))
+from vital_sync.paths import cache_path, ensure_data_files
+ensure_data_files()
+cache = cache_path()
 records = load_cache(cache)
 new_data = pull_all(days=2)
 # Merge Oura into records
@@ -183,12 +192,12 @@ save_cache(records, cache)
 print(f'Cache updated: {len(records)} records')
 "
 EOF
-chmod +x ~/.vital_sync/pull.sh
+chmod +x .vital-sync-data/pull.sh
 
 hermes cronjob create \
   --schedule "0 10 * * *" \
   --name "health-data-pull" \
-  --script ~/.vital_sync/pull.sh \
+  --script "$PWD/.vital-sync-data/pull.sh" \
   --no-agent
 ```
 
@@ -198,10 +207,11 @@ hermes cronjob create \
 |----------|---------|-------------|
 | `OURA_API_KEY` | — | Oura Personal Access Token |
 | `HEVY_API_KEY` | — | Hevy API key |
-| `VITAL_SYNC_CACHE` | `~/.vital_sync/cache.json` | Cache file path |
-| `VITAL_SYNC_DATA_DIR` | `~/.vital_sync/` | Data directory |
-| `VITAL_SYNC_SLEEP_TAGS` | `~/.vital_sync/sleep_tags.json` | Sleep tags file |
-| `VITAL_SYNC_CONFIG` | `~/.vital_sync/config.json` | Personal config file |
+| `VITAL_SYNC_CACHE` | `.vital-sync-data/cache.json` | Cache file path |
+| `VITAL_SYNC_DATA_DIR` | `.vital-sync-data/` | Data directory under the current working directory |
+| `VITAL_SYNC_SLEEP_TAGS` | `.vital-sync-data/sleep_tags.json` | Sleep tags file |
+| `VITAL_SYNC_CONFIG` | `.vital-sync-data/config.json` | Optional personal config file |
+| `VITAL_SYNC_HEVY_CACHE_DIR` | `.vital-sync-data/hevy_cache/` | Hevy cache directory |
 
 ## Cache Schema
 

@@ -22,16 +22,21 @@ from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError
 
+from vital_sync import paths
+
 # ── Configuration ────────────────────────────────────────────────────────────
 
 HEVY_BASE_URL = "https://api.hevyapp.com/v1"
-HEVY_CACHE_DIR = Path(
-    os.environ.get(
-        "VITAL_SYNC_DATA_DIR",
-        str(Path.home() / ".vital_sync" / "hevy_cache"),
-    )
-)
-HEVY_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+HEVY_CACHE_DIR: Path | None = None
+_CACHE_FILE: Path | None = None
+_META_FILE: Path | None = None
+_TEMPLATE_CACHE_FILE: Path | None = None
+
+
+def _hevy_cache_dir() -> Path:
+    resolved = HEVY_CACHE_DIR or paths.hevy_cache_dir()
+    resolved.mkdir(parents=True, exist_ok=True)
+    return resolved
 
 
 def _get_api_key() -> str | None:
@@ -305,12 +310,14 @@ _MUSCLE_KEYWORDS: dict[str, list[str]] = {
 }
 
 
-_TEMPLATE_CACHE_FILE = HEVY_CACHE_DIR / "exercise_templates.json"
+def _template_cache_file() -> Path:
+    return _TEMPLATE_CACHE_FILE or (_hevy_cache_dir() / "exercise_templates.json")
 
 
 def _load_template_cache() -> dict[str, dict[str, Any]]:
     """Load cached exercise templates for muscle group lookups."""
-    if not _TEMPLATE_CACHE_FILE.exists():
+    template_cache_file = _template_cache_file()
+    if not template_cache_file.exists():
         # Auto-fetch on first use
         templates = fetch_exercise_templates()
         cache = {}
@@ -321,9 +328,9 @@ def _load_template_cache() -> dict[str, dict[str, Any]]:
                 "secondary": t.get("secondary_muscle_groups", []),
                 "equipment": t.get("equipment", "unknown"),
             }
-        _TEMPLATE_CACHE_FILE.write_text(json.dumps(cache, indent=2))
+        template_cache_file.write_text(json.dumps(cache, indent=2))
         return cache
-    return json.loads(_TEMPLATE_CACHE_FILE.read_text())
+    return json.loads(template_cache_file.read_text())
 
 
 _template_lookup: dict[str, dict[str, Any]] | None = None
@@ -607,24 +614,31 @@ def fetch_exercise_history(exercise_template_id: str) -> list[dict[str, Any]]:
 
 # ── Caching layer ────────────────────────────────────────────────────────────
 
-_CACHE_FILE = HEVY_CACHE_DIR / "workouts.json"
-_META_FILE = HEVY_CACHE_DIR / "meta.json"
+
+def _cache_file() -> Path:
+    return _CACHE_FILE or (_hevy_cache_dir() / "workouts.json")
+
+
+def _meta_file() -> Path:
+    return _META_FILE or (_hevy_cache_dir() / "meta.json")
 
 
 def _load_cache() -> tuple[list[HevyWorkout], datetime | None]:
     """Load cached workouts and last sync timestamp."""
-    if not _CACHE_FILE.exists():
+    cache_file = _cache_file()
+    meta_file = _meta_file()
+    if not cache_file.exists():
         return [], None
     try:
-        raw_list = json.loads(_CACHE_FILE.read_text())
+        raw_list = json.loads(cache_file.read_text())
         workouts = [_parse_workout(w) for w in raw_list]
     except Exception:
         return [], None
 
     last_sync = None
-    if _META_FILE.exists():
+    if meta_file.exists():
         try:
-            meta = json.loads(_META_FILE.read_text())
+            meta = json.loads(meta_file.read_text())
             last_sync = datetime.fromisoformat(meta["last_sync"])
         except (json.JSONDecodeError, KeyError, ValueError, OSError):
             pass
@@ -668,8 +682,10 @@ def _save_cache(workouts: list[HevyWorkout]) -> None:
             ],
         }
         serializable.append(d)
-    _CACHE_FILE.write_text(json.dumps(serializable, indent=2))
-    _META_FILE.write_text(json.dumps({"last_sync": datetime.now(UTC).isoformat()}, indent=2))
+    cache_file = _cache_file()
+    meta_file = _meta_file()
+    cache_file.write_text(json.dumps(serializable, indent=2))
+    meta_file.write_text(json.dumps({"last_sync": datetime.now(UTC).isoformat()}, indent=2))
 
 
 def sync_workouts(force_full: bool = False) -> list[HevyWorkout]:

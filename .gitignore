@@ -54,6 +54,7 @@ venv.bak/
 Thumbs.db
 
 # Project-specific (personal data)
+.vital-sync-data/
 cache.json
 config.json
 *.cache.json

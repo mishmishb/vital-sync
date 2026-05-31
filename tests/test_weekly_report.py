@@ -47,16 +47,16 @@ def test_time_to_minutes_accepts_plain_and_iso_times() -> None:
     assert weekly_report._time_to_minutes("not-a-time") is None
 
 
-def test_sleep_tag_deviations_counts_negated_baselines_and_extra_tags(tmp_path: Path) -> None:
+def test_sleep_tag_deviations_summarises_flat_tags_against_baseline(tmp_path: Path) -> None:
     tags_path = tmp_path / "sleep_tags.json"
     tags_path.write_text(
         json.dumps(
             {
-                "canonical_tags": ["melatonin", "noise"],
+                "canonical_tags": {"melatonin": "", "noise": ""},
                 "baseline_tags": ["melatonin"],
-                "history": {
-                    "2026-05-20": {"negated": ["melatonin"], "applied": ["noise"]},
-                    "2026-05-21": {"negated": [], "applied": []},
+                "tags_by_date": {
+                    "2026-05-20": ["noise"],
+                    "2026-05-21": ["melatonin", "noise"],
                 },
             }
         )
@@ -70,8 +70,8 @@ def test_sleep_tag_deviations_counts_negated_baselines_and_extra_tags(tmp_path: 
     result = weekly_report._sleep_tag_deviations(records, str(tags_path), date(2026, 5, 20))
 
     assert result == {
-        "negated_baselines": {"melatonin": ["2026-05-20"]},
-        "applied_extras": {
+        "removed_baselines": {"melatonin": ["2026-05-20"]},
+        "extra_tags": {
             "noise": ["2026-05-20", "2026-05-21"],
             "late caffeine": ["2026-05-20"],
         },
@@ -79,9 +79,8 @@ def test_sleep_tag_deviations_counts_negated_baselines_and_extra_tags(tmp_path: 
     assert weekly_report._sleep_tag_deviations(
         records, str(tmp_path / "missing.json"), date(2026, 5, 20)
     ) == {
-        "negated_baselines": {},
-        "applied_extras": {},
-        "learned": [],
+        "removed_baselines": {},
+        "extra_tags": {},
     }
 
 
@@ -163,10 +162,10 @@ def test_main_outputs_structured_weekly_json(monkeypatch, tmp_path: Path, capsys
     tags_path.write_text(
         json.dumps(
             {
-                "canonical_tags": ["melatonin", "late caffeine"],
+                "canonical_tags": {"melatonin": "", "late caffeine": ""},
                 "baseline_tags": ["melatonin"],
-                "history": {
-                    "2026-05-20": {"negated": ["melatonin"], "applied": ["late caffeine"]}
+                "tags_by_date": {
+                    "2026-05-20": ["late caffeine"],
                 },
             }
         )
@@ -225,8 +224,8 @@ def test_main_outputs_structured_weekly_json(monkeypatch, tmp_path: Path, capsys
     assert output["days_in_window"] == 14
     assert "sleep_score" in output["baselines"]
     assert output["comparison_vs_previous_week"]["sleep_score"]["trend"] in {"up", "down", "flat"}
-    assert output["sleep_tags"]["negated_baselines"] == {"melatonin": 1}
-    assert output["sleep_tags"]["applied_extras"] == {"late caffeine": 1}
+    assert output["sleep_tags"]["removed_baselines"] == {"melatonin": 1}
+    assert output["sleep_tags"]["extra_tags"] == {"late caffeine": 1}
     assert output["hevy"]["sessions"] == 1
     assert output["body_composition"]["latest"]["weight_kg"] == pytest.approx(77.0)
     assert "circadian" in output
