@@ -101,6 +101,12 @@ def _build_sleep_data(
     sleep_data["sleep_score"] = daily_sleep.get(today, {}).get("score")
     sleep_data["readiness"] = daily_readiness.get(today, {}).get("score")
     sleep_data["activity_score"] = daily_activity.get(yesterday, {}).get("score")
+
+    # If neither score is available, Oura hasn't synced meaningful data for today.
+    # A nap or partial segment with no computed scores does not count as valid data.
+    if sleep_data["sleep_score"] is None and sleep_data["readiness"] is None:
+        return {"oura_missing": True}
+
     return sleep_data
 
 

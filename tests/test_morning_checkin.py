@@ -126,6 +126,32 @@ def test_build_sleep_data_reports_missing_and_score_only_days() -> None:
     }
 
 
+def test_build_sleep_data_reports_missing_when_nap_has_no_scores() -> None:
+    """A nap or short sleep segment with no computed scores should be treated as missing."""
+    nap_period = {
+        "day": "2026-06-02",
+        "bedtime_start": "2026-06-02T19:15:59+02:00",
+        "bedtime_end": "2026-06-02T19:42:59+02:00",
+        "total_sleep_duration": 500,  # 8.3 minutes
+        "efficiency": 31,
+        "average_heart_rate": 0,
+        "lowest_heart_rate": None,
+        "average_hrv": None,
+        "deep_sleep_duration": 60,
+        "rem_sleep_duration": 0,
+        "latency": 1080,
+    }
+    result = mc._build_sleep_data(
+        today="2026-06-02",
+        yesterday="2026-06-01",
+        sleep_periods=[nap_period],
+        daily_sleep={},
+        daily_readiness={},
+        daily_activity={"2026-06-01": {"score": 96}},
+    )
+    assert result == {"oura_missing": True}
+
+
 def test_parse_clock_time_accepts_common_formats_and_rejects_empty_or_invalid() -> None:
     assert mc._parse_clock_time(None) is None
     assert mc._parse_clock_time("  ") is None
