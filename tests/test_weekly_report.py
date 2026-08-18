@@ -281,6 +281,15 @@ def test_zone_time_summary_vo2max_latest() -> None:
     assert summary["vo2max_latest"] == {"date": "2026-08-18", "vo2max": 42.0}
 
 
+def test_zone_time_summary_vo2max_uses_all_records_scope() -> None:
+    records = [_record(date(2026, 8, 10))]
+    all_records = records + [_record(date(2026, 8, 18), vo2max=42.0)]
+    summary = weekly_report._zone_time_summary(
+        records, window_end=date(2026, 8, 16), all_records=all_records
+    )
+    assert summary["vo2max_latest"] == {"date": "2026-08-18", "vo2max": 42.0}
+
+
 def test_zone_time_summary_no_vo2max_returns_none() -> None:
     records = [_record(date(2026, 8, 17))]
     summary = weekly_report._zone_time_summary(records, window_end=date(2026, 8, 18))

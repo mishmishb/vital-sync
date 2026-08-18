@@ -314,17 +314,22 @@ def _get_data_paths():
     )
 
 
-def _zone_time_summary(records: list[DailyRecord], window_end: date) -> dict[str, Any]:
+def _zone_time_summary(
+    records: list[DailyRecord], window_end: date, all_records: list[DailyRecord] | None = None
+) -> dict[str, Any]:
     """Compute Z2+ weekly goal progress from cached records.
 
     Goal: 150 min/week at >= 60% max HR (Oura Z2 floor; max_hr=187 -> 112 bpm).
     Current week is the ISO week containing ``window_end`` (Monday start).
+    ``all_records`` is used for the vo2max lookup so an entry dated today or
+    outside the report window is still found; defaults to ``records``.
     """
     from vital_sync.heartrate_zones import ZONE_LABELS, weekly_z2plus
 
     goal_min = 150
     zone_by_day: dict[str, dict[str, float]] = {}
     daily_z2plus: list[dict[str, Any]] = []
+    vo2_scope = records if all_records is None else all_records
 
     for r in records:
         hr_zone = getattr(r, "hr_zone_min", None) or {}
@@ -343,7 +348,7 @@ def _zone_time_summary(records: list[DailyRecord], window_end: date) -> dict[str
             "daily_z2plus": sorted(daily_z2plus, key=lambda x: x["date"])[-14:],
             "streak_weeks_met": 0,
             "labels": ZONE_LABELS,
-            "vo2max_latest": _vo2max_latest(records),
+            "vo2max_latest": _vo2max_latest(vo2_scope),
         }
 
     current_monday = (window_end - timedelta(days=window_end.weekday())).isoformat()
@@ -369,7 +374,7 @@ def _zone_time_summary(records: list[DailyRecord], window_end: date) -> dict[str
         "daily_z2plus": sorted(daily_z2plus, key=lambda x: x["date"])[-14:],
         "streak_weeks_met": met_count,
         "labels": ZONE_LABELS,
-        "vo2max_latest": _vo2max_latest(records),
+        "vo2max_latest": _vo2max_latest(vo2_scope),
     }
 
 
@@ -492,7 +497,7 @@ def main() -> None:
         daily_values.append(entry)
 
     # Zone-time (Z2+ weekly goal tracking)
-    zone_time = _zone_time_summary(records_14d, window_end)
+    zone_time = _zone_time_summary(records_14d, window_end, all_records=all_records)
 
     significant_alerts = [a for a in alerts if a.severity in ("major", "moderate")]
 
