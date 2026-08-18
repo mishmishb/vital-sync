@@ -276,12 +276,45 @@ def _is_duplicate_of_hevy_workout(workout: dict, hevy_workouts: list[HevyWorkout
     return any(_workout_times_overlap(workout, hevy_workout) for hevy_workout in hevy_workouts)
 
 
+def _build_zone_goal_progress(records: list[DailyRecord], today: str) -> dict:
+    """Z2+ weekly goal progress from cached hr_zone_min data.
+
+    Goal: 150 min/week at >= 60% max HR. Current week runs Monday-Sunday.
+    """
+    from vital_sync.heartrate_zones import weekly_z2plus
+
+    goal_min = 150
+    zone_by_day: dict[str, dict[str, float]] = {}
+    for r in records:
+        hr_zone = getattr(r, "hr_zone_min", None) or {}
+        if hr_zone:
+            zone_by_day[r.date.isoformat()] = hr_zone
+
+    weeks = weekly_z2plus(zone_by_day)
+    try:
+        today_date = date.fromisoformat(today)
+    except ValueError:
+        today_date = date.today()
+    current_monday = (today_date - timedelta(days=today_date.weekday())).isoformat()
+    current_week_min = weeks.get(current_monday, 0.0)
+    remaining = max(0.0, goal_min - current_week_min)
+
+    return {
+        "weekly_goal_min": goal_min,
+        "current_week_start": current_monday,
+        "current_week_z2plus_min": round(current_week_min, 1),
+        "remaining_min": round(remaining, 1),
+        "goal_met": current_week_min >= goal_min,
+    }
+
+
 def _build_activity_data(
     *,
     yesterday: str,
     daily_activity: dict,
     workouts: list[dict],
     hevy_workouts: list[HevyWorkout] | None = None,
+    zone_progress: dict | None = None,
 ) -> dict:
     yesterday_activity = daily_activity.get(yesterday, {})
     yesterday_hevy_workouts = [
@@ -310,6 +343,7 @@ def _build_activity_data(
         "contributors": yesterday_activity.get("contributors") or {},
         "oura_workouts": filtered_oura_workouts,
         "suppressed_oura_duplicates": suppressed_oura_duplicates,
+        "zone_goal": zone_progress or {},
     }
 
 
@@ -467,11 +501,13 @@ def main() -> None:
     effective_tags = _process_sleep_tags(merged, today, cache_path)
 
     # ---- Activity summary ----
+    zone_progress = _build_zone_goal_progress(merged, today)
     activity_data = _build_activity_data(
         yesterday=yesterday,
         daily_activity=daily_activity,
         workouts=oura_workouts,
         hevy_workouts=hevy_workouts,
+        zone_progress=zone_progress,
     )
 
     # ---- Gap check (last 30 days) ----

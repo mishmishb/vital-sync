@@ -2,8 +2,11 @@ import json
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import pytest
+
 from vital_sync import morning_checkin as mc
 from vital_sync import weekly_report as wr
+from vital_sync.analytics import DailyRecord
 from vital_sync.hevy_client import HevyWorkout
 
 
@@ -472,7 +475,45 @@ def test_build_activity_data_uses_daily_activity_as_primary_context() -> None:
             },
         ],
         "suppressed_oura_duplicates": 0,
+        "zone_goal": {},
     }
+
+
+def test_build_zone_goal_progress_current_week() -> None:
+    # Today Tue 2026-08-18. Week Mon-Sun 2026-08-17..23. Fri 2026-08-21 has 120.
+    records = [
+        DailyRecord(date=date(2026, 8, 17), hr_zone_min={"z2plus_min": 10.0, "Z2": 10.0}),
+        DailyRecord(date=date(2026, 8, 21), hr_zone_min={"z2plus_min": 120.0, "Z2": 120.0}),
+        DailyRecord(
+            date=date(2026, 8, 10), hr_zone_min={"z2plus_min": 200.0, "Z3": 200.0}
+        ),  # prior week
+    ]
+    progress = mc._build_zone_goal_progress(records, today="2026-08-18")
+
+    assert progress["weekly_goal_min"] == 150
+    assert progress["current_week_start"] == "2026-08-17"
+    assert progress["current_week_z2plus_min"] == pytest.approx(130.0)
+    assert progress["remaining_min"] == pytest.approx(20.0)
+    assert progress["goal_met"] is False
+
+
+def test_build_zone_goal_progress_goal_met() -> None:
+    records = [
+        DailyRecord(date=date(2026, 8, 17), hr_zone_min={"z2plus_min": 160.0, "Z2": 160.0}),
+    ]
+    progress = mc._build_zone_goal_progress(records, today="2026-08-18")
+
+    assert progress["current_week_z2plus_min"] == pytest.approx(160.0)
+    assert progress["remaining_min"] == pytest.approx(0.0)
+    assert progress["goal_met"] is True
+
+
+def test_build_zone_goal_progress_no_data() -> None:
+    records = [DailyRecord(date=date(2026, 8, 17))]
+    progress = mc._build_zone_goal_progress(records, today="2026-08-18")
+    assert progress["current_week_z2plus_min"] == pytest.approx(0.0)
+    assert progress["remaining_min"] == pytest.approx(150.0)
+    assert progress["goal_met"] is False
 
 
 def test_build_oura_workout_summary_tolerates_missing_distance() -> None:

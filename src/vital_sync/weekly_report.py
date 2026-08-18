@@ -314,6 +314,77 @@ def _get_data_paths():
     )
 
 
+def _zone_time_summary(records: list[DailyRecord], window_end: date) -> dict[str, Any]:
+    """Compute Z2+ weekly goal progress from cached records.
+
+    Goal: 150 min/week at >= 60% max HR (Oura Z2 floor; max_hr=187 -> 112 bpm).
+    Current week is the ISO week containing ``window_end`` (Monday start).
+    """
+    from vital_sync.heartrate_zones import ZONE_LABELS, weekly_z2plus
+
+    goal_min = 150
+    zone_by_day: dict[str, dict[str, float]] = {}
+    daily_z2plus: list[dict[str, Any]] = []
+
+    for r in records:
+        hr_zone = getattr(r, "hr_zone_min", None) or {}
+        z2 = getattr(r, "z2plus_min", None)
+        if hr_zone:
+            zone_by_day[r.date.isoformat()] = hr_zone
+        if z2 is not None:
+            daily_z2plus.append({"date": r.date.isoformat(), "z2plus_min": round(float(z2), 1)})
+
+    weeks = weekly_z2plus(zone_by_day)
+    if not weeks:
+        return {
+            "goal_min": goal_min,
+            "current_week": None,
+            "previous_weeks": [],
+            "daily_z2plus": sorted(daily_z2plus, key=lambda x: x["date"])[-14:],
+            "streak_weeks_met": 0,
+            "labels": ZONE_LABELS,
+            "vo2max_latest": _vo2max_latest(records),
+        }
+
+    current_monday = (window_end - timedelta(days=window_end.weekday())).isoformat()
+    current_week_min = weeks.get(current_monday, 0.0)
+    previous_weeks = [
+        {"week_start": monday, "z2plus_min": round(minutes, 1)}
+        for monday, minutes in sorted(weeks.items())
+        if monday < current_monday
+    ]
+    met_count = sum(
+        1 for monday, minutes in weeks.items() if monday < current_monday and minutes >= goal_min
+    )
+
+    return {
+        "goal_min": goal_min,
+        "current_week": {
+            "week_start": current_monday,
+            "z2plus_min": round(current_week_min, 1),
+            "remaining_min": round(max(0.0, goal_min - current_week_min), 1),
+            "goal_met": current_week_min >= goal_min,
+        },
+        "previous_weeks": previous_weeks[-4:],
+        "daily_z2plus": sorted(daily_z2plus, key=lambda x: x["date"])[-14:],
+        "streak_weeks_met": met_count,
+        "labels": ZONE_LABELS,
+        "vo2max_latest": _vo2max_latest(records),
+    }
+
+
+def _vo2max_latest(records: list[DailyRecord]) -> dict[str, Any] | None:
+    """Most recent vo2max measurement (Oura walking test / manual entry)."""
+    with_vo2 = [r for r in records if getattr(r, "vo2max", None) is not None]
+    if not with_vo2:
+        return None
+    latest = max(with_vo2, key=lambda r: r.date)
+    vo2 = latest.vo2max
+    if vo2 is None:
+        return None
+    return {"date": latest.date.isoformat(), "vo2max": float(vo2)}
+
+
 def main() -> None:
     today = date.today()
     window_end = today - timedelta(days=1)  # up to yesterday
@@ -420,6 +491,9 @@ def main() -> None:
                 entry["hevy_volume_kg"] = vol
         daily_values.append(entry)
 
+    # Zone-time (Z2+ weekly goal tracking)
+    zone_time = _zone_time_summary(records_14d, window_end)
+
     significant_alerts = [a for a in alerts if a.severity in ("major", "moderate")]
 
     output = {
@@ -469,6 +543,7 @@ def main() -> None:
         "hevy": hevy,
         "body_composition": body,
         "circadian": circadian,
+        "zone_time": zone_time,
     }
 
     print(json.dumps(output, indent=2, default=str))

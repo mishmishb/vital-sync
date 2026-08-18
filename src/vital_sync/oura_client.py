@@ -50,6 +50,24 @@ def _get(endpoint: str, params: dict[str, str] | None = None) -> dict[str, Any]:
         return json.loads(resp.read())
 
 
+def _get_paginated(
+    endpoint: str, params: dict[str, str] | None = None, max_pages: int = 30
+) -> list[dict[str, Any]]:
+    """Fetch all pages of a collection endpoint, following next_token."""
+    items: list[dict[str, Any]] = []
+    next_token: str | None = None
+    for _ in range(max_pages):
+        page_params = dict(params or {})
+        if next_token:
+            page_params["next_token"] = next_token
+        data = _get(endpoint, page_params)
+        items.extend(data.get("data", []))
+        next_token = data.get("next_token")
+        if not next_token:
+            break
+    return items
+
+
 def fetch_sleep(days: int = 7) -> list[dict[str, Any]]:
     """Fetch sleep periods for the last N days.
 
@@ -99,6 +117,20 @@ def fetch_daily_activity(days: int = 7) -> dict[str, dict[str, Any]]:
     for item in data.get("data", []):
         result[item["day"]] = item
     return result
+
+
+def fetch_heartrate(days: int = 7) -> list[dict[str, Any]]:
+    """Fetch raw heart-rate samples for the last N days (paginated).
+
+    Returns list of {"timestamp": ISO datetime, "bpm": int, "source": str,
+    "producer_timestamp": ms} dicts. The Oura heartrate endpoint caps each page
+    at 1000 samples, so pagination via next_token is required.
+    """
+    start = (
+        datetime.now(tz=datetime.now().astimezone().tzinfo) - timedelta(days=days)
+    ).isoformat()
+    end = datetime.now(tz=datetime.now().astimezone().tzinfo).isoformat()
+    return _get_paginated("heartrate", {"start_datetime": start, "end_datetime": end})
 
 
 def fetch_workouts(days: int = 7) -> list[dict[str, Any]]:
@@ -191,8 +223,11 @@ def _extract_time(iso_str: str | None) -> str | None:
         return None
 
 
-def pull_all(days: int = 30) -> dict[str, dict[str, Any]]:
+def pull_all(days: int = 30, max_hr: int = 187) -> dict[str, dict[str, Any]]:
     """Pull all Oura data and return records keyed by date.
+
+    Includes heart-rate zone minutes (computed from raw heartrate samples) per
+    record as ``hr_zone_min`` (dict Z0..Z5 + z2plus_min) and ``z2plus_min``.
 
     This is the main entry point for fetching Oura data.
     """
@@ -201,7 +236,22 @@ def pull_all(days: int = 30) -> dict[str, dict[str, Any]]:
     daily_readiness = fetch_daily_readiness(days)
     daily_activity = fetch_daily_activity(days)
 
-    return sleep_periods_to_records(sleep_data, daily_sleep, daily_readiness, daily_activity)
+    records = sleep_periods_to_records(sleep_data, daily_sleep, daily_readiness, daily_activity)
+
+    from vital_sync.heartrate_zones import compute_daily_zone_minutes
+
+    # Heartrate samples are supplementary; never let a failed fetch break the pull.
+    try:
+        samples = fetch_heartrate(days)
+        zone_minutes = compute_daily_zone_minutes(samples, max_hr=max_hr)
+    except Exception:
+        zone_minutes = {}
+    for day, record in records.items():
+        if day in zone_minutes:
+            record["hr_zone_min"] = zone_minutes[day]
+            record["z2plus_min"] = zone_minutes[day]["z2plus_min"]
+
+    return records
 
 
 if __name__ == "__main__":

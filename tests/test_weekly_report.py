@@ -229,3 +229,73 @@ def test_main_outputs_structured_weekly_json(monkeypatch, tmp_path: Path, capsys
     assert output["hevy"]["sessions"] == 1
     assert output["body_composition"]["latest"]["weight_kg"] == pytest.approx(77.0)
     assert "circadian" in output
+    assert "zone_time" in output
+    assert output["zone_time"]["goal_min"] == 150
+
+
+def test_zone_time_summary_current_week_progress_and_previous_weeks() -> None:
+    # Window ends Sunday 2026-08-16. Records Mon-Sun that week: 100 + 50 = 150.
+    records = [
+        _record(date(2026, 8, 10), hr_zone_min={"z2plus_min": 100.0, "Z2": 100.0}),
+        _record(date(2026, 8, 13), hr_zone_min={"z2plus_min": 0.0}),
+        _record(date(2026, 8, 16), hr_zone_min={"z2plus_min": 50.0, "Z3": 50.0}),
+        _record(date(2026, 8, 17), hr_zone_min={"z2plus_min": 60.0, "Z2": 60.0}),
+    ]
+    summary = weekly_report._zone_time_summary(records, window_end=date(2026, 8, 16))
+
+    assert summary["goal_min"] == 150
+    assert summary["current_week"]["week_start"] == "2026-08-10"
+    assert summary["current_week"]["z2plus_min"] == pytest.approx(150.0)
+    assert summary["current_week"]["remaining_min"] == pytest.approx(0.0)
+    assert summary["current_week"]["goal_met"] is True
+    # 2026-08-17 starts the NEXT ISO week — after window end, not a previous week.
+    assert summary["previous_weeks"] == []
+    assert summary["streak_weeks_met"] == 0  # no COMPLETE previous week met
+
+
+def test_zone_time_summary_week_below_goal_reports_remaining() -> None:
+    records = [
+        _record(date(2026, 8, 10), hr_zone_min={"z2plus_min": 40.0, "Z2": 40.0}),
+    ]
+    summary = weekly_report._zone_time_summary(records, window_end=date(2026, 8, 16))
+
+    assert summary["current_week"]["z2plus_min"] == pytest.approx(40.0)
+    assert summary["current_week"]["remaining_min"] == pytest.approx(110.0)
+    assert summary["current_week"]["goal_met"] is False
+
+
+def test_zone_time_summary_no_zone_data_returns_empty_shape() -> None:
+    records = [_record(date(2026, 8, 10))]
+    summary = weekly_report._zone_time_summary(records, window_end=date(2026, 8, 16))
+    assert summary["current_week"] is None
+    assert summary["daily_z2plus"] == []
+
+
+def test_zone_time_summary_vo2max_latest() -> None:
+    records = [
+        _record(date(2026, 8, 1), vo2max=40.0),
+        _record(date(2026, 8, 18), vo2max=42.0),
+        _record(date(2026, 8, 17)),
+    ]
+    summary = weekly_report._zone_time_summary(records, window_end=date(2026, 8, 18))
+    assert summary["vo2max_latest"] == {"date": "2026-08-18", "vo2max": 42.0}
+
+
+def test_zone_time_summary_no_vo2max_returns_none() -> None:
+    records = [_record(date(2026, 8, 17))]
+    summary = weekly_report._zone_time_summary(records, window_end=date(2026, 8, 18))
+    assert summary["vo2max_latest"] is None
+
+
+def test_zone_time_summary_streak_counts_completed_weeks_only() -> None:
+    # Two full previous weeks met; current week (Mon 2026-08-10) in progress.
+    records = [
+        _record(date(2026, 7, 27), hr_zone_min={"z2plus_min": 160.0}),
+        _record(date(2026, 8, 2), hr_zone_min={"z2plus_min": 120.0}),
+        _record(date(2026, 8, 3), hr_zone_min={"z2plus_min": 170.0}),
+        _record(date(2026, 8, 9), hr_zone_min={"z2plus_min": 200.0}),
+    ]
+    summary = weekly_report._zone_time_summary(records, window_end=date(2026, 8, 16))
+    # weeks met strictly before current week's Monday (2026-08-10):
+    # 2026-07-27 (160 >= 150) and 2026-08-03 (170+200) -> 2
+    assert summary["streak_weeks_met"] == 2

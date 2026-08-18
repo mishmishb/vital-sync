@@ -92,6 +92,10 @@ class DailyRecord:
     hevy_muscle_groups: list[str] = field(default_factory=list)  # trained muscles that day
     hevy_max_weight_kg: float | None = None  # heaviest lift of the day
     hevy_avg_rpe: float | None = None  # average RPE across all sets
+    # ── Heart-rate zone + fitness fields ─────────────────────────────────────────
+    hr_zone_min: dict[str, float] | None = None  # {Z0..Z5, z2plus_min} minutes
+    z2plus_min: float | None = None  # minutes at >= 60% max HR (Oura Z2 floor)
+    vo2max: float | None = None  # ml/kg/min, from Oura walking test / lab
     notes: str = ""
     sources: list[str] = field(default_factory=list)
     sleep_tags: list[str] = field(default_factory=list)
