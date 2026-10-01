@@ -660,6 +660,7 @@ def test_main_builds_context_without_live_apis_and_persists_early_wake_tag(
         date=date(2026, 5, 22),
         mood=7,
         notes="preserve manual context",
+        vo2max=42.0,
         sleep_tags=["melatonin"],
     )
     mc.save_cache([old_record], str(cache_path))
@@ -767,6 +768,7 @@ def test_main_builds_context_without_live_apis_and_persists_early_wake_tag(
     assert any(item["date"] == "2026-05-21" for item in output["hevy_recent_14d"])
     assert today_record.mood == 7
     assert today_record.notes == "preserve manual context"
+    assert today_record.vo2max == 42.0
     assert today_record.sleep_tags == ["melatonin", "early wake"]
     assert tags["canonical_tags"] == {
         "early wake": "auto-added when wake time is before configured cutoff"

@@ -468,6 +468,9 @@ def main() -> None:
         "body_fat_pct",
         "weight_kg",
         "muscle_mass_kg",
+        # manual entry from the Oura walking test; the API 404s for it,
+        # so a record rebuild must carry it over or the value is lost
+        "vo2max",
     ]
     merged = []
     for day, oura_r in sorted(oura_records.items()):
