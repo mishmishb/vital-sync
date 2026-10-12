@@ -155,6 +155,50 @@ def migrate_legacy_sleep_tags(
     return _remove_legacy_keys(tag_data) or changed
 
 
+def merge_legacy_history(tag_data: dict[str, Any], history: dict[str, Any]) -> int:
+    """Merge a legacy applied/negated ``history`` into ``tags_by_date``.
+
+    The legacy ``health_data`` tag store recorded, per night, the tags
+    *applied* and the baseline tags *negated*; vital-sync's ``tags_by_date``
+    instead holds the resolved **effective** tag list for each date. Porting the
+    two stores therefore means recomputing the effective list::
+
+        effective = base - negated + applied
+
+    where ``base`` is the date's existing ``tags_by_date`` entry when present
+    (so vital-only tags are never lost), falling back to the active baseline
+    tags when the date has no entry yet.
+
+    Only dates present in ``history`` are touched, so a date that exists only
+    in vital-sync (e.g. the reverse case) is left untouched and a date with no
+    history never gains an empty entry.
+
+    Returns the number of dates whose ``tags_by_date`` entry changed; a second
+    run over already-merged data returns ``0``.
+    """
+    tags_by_date = tag_data.setdefault("tags_by_date", {})
+    changed = 0
+    for target_day in sorted(history):
+        day_history = history.get(target_day) or {}
+        negated = set(day_history.get("negated", []) or [])
+        applied = list(day_history.get("applied", []) or [])
+
+        if target_day in tags_by_date:
+            base = list(tags_by_date[target_day] or [])
+        else:
+            base = active_baseline_tags(tag_data, target_day)
+
+        effective = _dedupe_preserve_order([tag for tag in base if tag not in negated] + applied)
+
+        if target_day not in tags_by_date and not effective:
+            continue
+        if tags_by_date.get(target_day) != effective:
+            tags_by_date[target_day] = effective
+            changed += 1
+
+    return changed
+
+
 class SleepTagManager:
     """Stub — tag-based sleep analysis under active development."""
 
